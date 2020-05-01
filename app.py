@@ -21,6 +21,7 @@ class DockerResolver(BaseResolver):
         self.domain = domain
         self.data   = {}
         self.ports  = {}
+        self.rrs    = {}
         self.recurse = recurse
         self._get_data()
     def __init_entry(self):
@@ -30,7 +31,10 @@ class DockerResolver(BaseResolver):
         if not self.ctrl.ping() == 'OK':    logger.error('no docker connection')
         self.data   = {}
         self.ports  = {}
+        self.rrs    = {}
         for container in self.ctrl.containers():
+            imgid, imgname = container['ImageID'], container['Image'].split(':', 1)[0].replace('/', '_')
+            rr = self.rrs.get(imgid, {'name': imgname, 'hosts': []})
             if len(container['NetworkSettings']['Networks']) > 1:
                 networks = list(filter(lambda x: x != 'DNS', \
                                 container['NetworkSettings']['Networks']))
@@ -38,6 +42,7 @@ class DockerResolver(BaseResolver):
                 networks = container['NetworkSettings']['Networks']
             for network in map(lambda x: container['NetworkSettings']['Networks'][x], networks):
                 ip = network['IPAddress']
+                rr['hosts'].append(A(ip))
                 for name in container['Names']: 
                     name = name[1:] # strip docker name starts "/xxxx" 
                     name = name.replace('/', '_') # make docker-link names DNS compatible
@@ -53,6 +58,13 @@ class DockerResolver(BaseResolver):
                         pp[proto].append(SRV(port=int(num), target='_%s.%s' % (proto, target)))
                         self.ports[int(num)] = pp
                     self.data[name] = entry
+            self.rrs[imgid] = rr
+        for rr in self.rrs:
+            name = self.rrs[rr]['name']
+            hosts= self.rrs[rr]['hosts']
+            entry   = self.data.get(name, self.__init_entry())
+            entry['A'] = hosts 
+            self.data[name] = entry
     def _qtype(self, rsp):
         return dns.rdatatype.from_text(rsp)
     def resolve(self,request,handler):
@@ -143,7 +155,7 @@ if __name__ == '__main__':
             else:
                 c += 1
     except Exception as e:
-        logger.error(r, str(e))
+        logger.error(str(e))
         while u.isAlive():
             u.stop()
         while t.isAlive():
