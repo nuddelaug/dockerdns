@@ -33,7 +33,7 @@ class DockerResolver(BaseResolver):
         self.ports  = {}
         self.rrs    = {}
         for container in self.ctrl.containers():
-            imgid, imgname = container['ImageID'], container['Image'].split(':', 1)[0].replace('/', '_')
+            imgid, imgname = container['ImageID'], container['Image'].split(':', 1)[0].split('/')[-1]
             rr = self.rrs.get(imgid, {'name': imgname, 'hosts': []})
             if len(container['NetworkSettings']['Networks']) > 1:
                 networks = list(filter(lambda x: x != 'DNS', \
