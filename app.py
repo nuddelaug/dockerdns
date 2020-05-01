@@ -4,6 +4,7 @@ from dnslib.server import *
 import dns.rdatatype
 import logging
 import sys
+import random
 
 logger = logging.getLogger('DNS')
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -90,7 +91,9 @@ class DockerResolver(BaseResolver):
                     reply.add_answer(RR(qname,qt,ttl=self.ttl,
                                        rdata=rsp[d]))
                 else:
-                    for dd in rsp.get(d, []):
+                    rsps = rsp.get(d, [])
+                    random.shuffle(rsps)
+                    for dd in rsps:
                         reply.add_answer(RR(qname,qt,ttl=self.ttl,
                                        rdata=dd))
             return reply
