@@ -35,6 +35,31 @@ class DockerBackend(Thread):
                 for c in self.ctrl.containers():
                     self._containers[c.get('Id')] = c
             return list(self._containers.values())
+    def _remove_(self, event):
+        if self._containers.get(event.get('id'), False):
+            logger.debug('removing container: %s' % event.get('id'))
+            logger.debug(self._containers[event.get('id')])
+            try:    self._handler.update_data(self._containers[event.get('id')], remove=True)
+            except Exception as e:  
+                logger.error('handler raise Exception removing container %s' % str(e))
+                del self._containers[event.get('id')]
+                return False
+            del self._containers[event.get('id')]
+        else:
+            logger.debug('id %s not found' % event.get('id'))
+        return True
+    def _add_(self, event):
+        if not self._containers.get(event.get('id'), False):
+            logger.debug('adding container: %s' % event.get('id'))
+            self._containers[event.get('id')] = self.ctrl.containers(filters={'id': event.get('id')})[0]
+            logger.debug(self._containers[event.get('id')])
+            try:    self._handler.update_data(self._containers[event.get('id')])
+            except Exception as e:  
+                logger.error('hanlder raise Exception adding container %s' % str(e))
+                return False
+        else:
+            logger.debug('id %s not found' % event.get('id'))
+        return True
     def events(self):
         for event in self.ctrl.events():
             try:    event = json.loads(event)
@@ -44,21 +69,18 @@ class DockerBackend(Thread):
             logger.debug('received Docker event type %s state %s' % (event.get('Type'), event.get('status')))
             if all([event.get('Type') == 'container',
                     event.get('status') in ('kill', 'destroy', 'stop', 'die')]):
-                if self._containers.get(event.get('id'), False):
-                    logger.debug('removing container: %s' % event.get('id'))
-                    logger.debug(self._containers[event.get('id')])
-                    try:    self._handler.update_data(self._containers[event.get('id')], remove=True)
-                    except Exception as e:  logger.error('handler raise Exception removing container %s' % str(e))
-                    del self._containers[event.get('id')]
+                self._delete_(event)
                 continue
             if all([event.get('Type') == 'container',
                     event.get('status') in ('start',)]):
-                if not self._containers.get(event.get('id'), False):
-                    logger.debug('adding container: %s' % event.get('id'))
-                    self._containers[event.get('id')] = self.ctrl.containers(filters={'id': event.get('id')})[0]
-                    logger.debug(self._containers[event.get('id')])
-                    try:    self._handler.update_data(self._containers[event.get('id')])
-                    except Exception as e:  logger.error('hanlder raise Exception adding container %s' % str(e))
+                self._add_(event)
+                continue
+            if all([event.get('Type') == 'container',
+                    event.get('status') in ('rename',)]):
+                logger.debug('trying to rename %s' % event.get('id'))
+                self._remove_(event)
+                self._add_(event)
+                continue
     def run(self):
         try:
             while self.isAlive():
